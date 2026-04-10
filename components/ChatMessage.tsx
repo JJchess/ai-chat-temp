@@ -15,7 +15,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
           ? 'bg-blue-600 text-white rounded-br-sm' 
           : 'bg-gray-100 text-gray-900 rounded-bl-sm dark:bg-gray-800 dark:text-gray-100'
       }`}>
-        <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+        <div className="whitespace-pre-wrap wrap-break-word text-sm leading-relaxed">
           {message.content}
         </div>
       </div>

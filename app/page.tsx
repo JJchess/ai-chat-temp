@@ -5,6 +5,8 @@ import { Message } from '../types/chat';
 import { ChatMessage } from '../components/ChatMessage';
 import { ChatComposer } from '../components/ChatComposer';
 
+const BACKEND_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:8000';
+
 export default function ChatSandboxPage() {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -15,6 +17,7 @@ export default function ChatSandboxPage() {
     }
   ]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // 自动滚动到底部
@@ -24,8 +27,43 @@ export default function ChatSandboxPage() {
     }
   }, [messages]);
 
+  const parseSseEvents = (
+    buffer: string,
+    onEvent: (eventName: string, data: Record<string, unknown>) => void
+  ): string => {
+    let rest = buffer;
+    let splitIndex = rest.indexOf('\n\n');
+    while (splitIndex !== -1) {
+      const rawEvent = rest.slice(0, splitIndex);
+      rest = rest.slice(splitIndex + 2);
+
+      const lines = rawEvent.split('\n');
+      let eventName = 'message';
+      let dataPayload = '';
+
+      for (const line of lines) {
+        if (line.startsWith('event:')) {
+          eventName = line.slice(6).trim();
+        } else if (line.startsWith('data:')) {
+          dataPayload += line.slice(5).trim();
+        }
+      }
+
+      if (dataPayload) {
+        try {
+          const parsed = JSON.parse(dataPayload) as Record<string, unknown>;
+          onEvent(eventName, parsed);
+        } catch {
+          onEvent(eventName, { raw: dataPayload });
+        }
+      }
+
+      splitIndex = rest.indexOf('\n\n');
+    }
+    return rest;
+  };
+
   const handleSendMessage = async (text: string) => {
-    // 1. 添加用户消息
     const userMsg: Message = {
       id: Date.now().toString(),
       role: 'user',
@@ -35,17 +73,90 @@ export default function ChatSandboxPage() {
     setMessages(prev => [...prev, userMsg]);
     setIsGenerating(true);
 
-    // 2. 模拟 AI 回复 (这里你可以替换成真实的流式请求逻辑)
-    setTimeout(() => {
-      const aiMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: `这是对"${text}"的模拟回复。你可以在这里接入真实的 API 流式返回。`,
-        created_at: new Date().toISOString(),
-      };
-      setMessages(prev => [...prev, aiMsg]);
+    const optimisticAssistantId = `${Date.now()}-assistant`;
+    const assistantShell: Message = {
+      id: optimisticAssistantId,
+      role: 'assistant',
+      content: '',
+      created_at: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, assistantShell]);
+
+    try {
+      const response = await fetch(`${BACKEND_BASE_URL}/chat/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          session_id: sessionId,
+          message: text,
+        }),
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error(`stream request failed: ${response.status}`);
+      }
+
+      const decoder = new TextDecoder();
+      const reader = response.body.getReader();
+      let buffer = '';
+      let activeAssistantId = optimisticAssistantId;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        buffer = parseSseEvents(buffer, (eventName, data) => {
+          if (eventName === 'session' && typeof data.session_id === 'string') {
+            setSessionId(data.session_id);
+            return;
+          }
+
+          if (eventName === 'message_start' && typeof data.message_id === 'string') {
+            activeAssistantId = data.message_id;
+            setMessages(prev =>
+              prev.map(msg =>
+                msg.id === optimisticAssistantId
+                  ? { ...msg, id: activeAssistantId, created_at: new Date().toISOString() }
+                  : msg
+              )
+            );
+            return;
+          }
+
+          if (eventName === 'assistant_delta' && typeof data.delta === 'string') {
+            const delta = data.delta;
+            setMessages(prev =>
+              prev.map(msg =>
+                msg.id === activeAssistantId
+                  ? { ...msg, content: msg.content + delta }
+                  : msg
+              )
+            );
+            return;
+          }
+
+          if (eventName === 'message_end') {
+            setIsGenerating(false);
+          }
+        });
+      }
+    } catch {
+      setMessages(prev =>
+        prev.map(msg =>
+          msg.id === optimisticAssistantId
+            ? {
+                ...msg,
+                content: '连接后端流失败，请确认 backend 已启动在 http://localhost:8000。',
+              }
+            : msg
+        )
+      );
+    } finally {
       setIsGenerating(false);
-    }, 1000);
+    }
   };
 
   return (
