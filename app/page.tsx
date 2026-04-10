@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Message } from '../types/chat';
+import { useState, useRef, useEffect } from 'react';
+import { Message, MessageBlock, WidgetBlock } from '../types/chat';
 import { ChatMessage } from '../components/ChatMessage';
 import { ChatComposer } from '../components/ChatComposer';
 
@@ -63,6 +63,26 @@ export default function ChatSandboxPage() {
     return rest;
   };
 
+  const updateAssistantMessage = (
+    messageId: string,
+    updater: (msg: Message) => Message
+  ) => {
+    setMessages(prev => prev.map(msg => (msg.id === messageId ? updater(msg) : msg)));
+  };
+
+  const updateTextBlock = (blocks: MessageBlock[] | undefined, appendDelta: string): MessageBlock[] => {
+    const current = blocks ?? [{ type: 'text', text: '' }];
+    const textIndex = current.findIndex(block => block.type === 'text');
+    if (textIndex === -1) {
+      return [{ type: 'text', text: appendDelta }, ...current];
+    }
+    return current.map((block, index) =>
+      index === textIndex && block.type === 'text'
+        ? { ...block, text: block.text + appendDelta }
+        : block
+    );
+  };
+
   const handleSendMessage = async (text: string) => {
     const userMsg: Message = {
       id: Date.now().toString(),
@@ -79,6 +99,7 @@ export default function ChatSandboxPage() {
       role: 'assistant',
       content: '',
       created_at: new Date().toISOString(),
+      blocks: [{ type: 'text', text: '' }],
     };
     setMessages(prev => [...prev, assistantShell]);
 
@@ -128,13 +149,68 @@ export default function ChatSandboxPage() {
 
           if (eventName === 'assistant_delta' && typeof data.delta === 'string') {
             const delta = data.delta;
-            setMessages(prev =>
-              prev.map(msg =>
-                msg.id === activeAssistantId
-                  ? { ...msg, content: msg.content + delta }
-                  : msg
-              )
-            );
+            updateAssistantMessage(activeAssistantId, msg => ({
+              ...msg,
+              content: msg.content + delta,
+              blocks: updateTextBlock(msg.blocks, delta),
+            }));
+            return;
+          }
+
+          if (
+            eventName === 'toolcall_start' &&
+            typeof data.tool_call_id === 'string' &&
+            typeof data.title === 'string'
+          ) {
+            const widgetBlock: WidgetBlock = {
+              type: 'widget',
+              tool_call_id: data.tool_call_id,
+              title: data.title,
+              widget_code: '',
+              width: typeof data.width === 'number' ? data.width : undefined,
+              height: typeof data.height === 'number' ? data.height : undefined,
+              status: 'streaming',
+            };
+            updateAssistantMessage(activeAssistantId, msg => ({
+              ...msg,
+              blocks: [...(msg.blocks ?? [{ type: 'text', text: msg.content }]), widgetBlock],
+            }));
+            return;
+          }
+
+          if (
+            eventName === 'toolcall_delta' &&
+            typeof data.tool_call_id === 'string' &&
+            typeof data.widget_code === 'string'
+          ) {
+            const toolCallId = data.tool_call_id;
+            const widgetCode = data.widget_code;
+            updateAssistantMessage(activeAssistantId, msg => ({
+              ...msg,
+              blocks: (msg.blocks ?? []).map(block =>
+                block.type === 'widget' && block.tool_call_id === toolCallId
+                  ? { ...block, widget_code: widgetCode, status: 'streaming' }
+                  : block
+              ),
+            }));
+            return;
+          }
+
+          if (
+            eventName === 'toolcall_end' &&
+            typeof data.tool_call_id === 'string' &&
+            typeof data.widget_code === 'string'
+          ) {
+            const toolCallId = data.tool_call_id;
+            const widgetCode = data.widget_code;
+            updateAssistantMessage(activeAssistantId, msg => ({
+              ...msg,
+              blocks: (msg.blocks ?? []).map(block =>
+                block.type === 'widget' && block.tool_call_id === toolCallId
+                  ? { ...block, widget_code: widgetCode, status: 'completed' }
+                  : block
+              ),
+            }));
             return;
           }
 
@@ -144,16 +220,11 @@ export default function ChatSandboxPage() {
         });
       }
     } catch {
-      setMessages(prev =>
-        prev.map(msg =>
-          msg.id === optimisticAssistantId
-            ? {
-                ...msg,
-                content: '连接后端流失败，请确认 backend 已启动在 http://localhost:8000。',
-              }
-            : msg
-        )
-      );
+      updateAssistantMessage(optimisticAssistantId, msg => ({
+        ...msg,
+        content: '连接后端流失败，请确认 backend 已启动在 http://localhost:8000。',
+        blocks: [{ type: 'text', text: '连接后端流失败，请确认 backend 已启动在 http://localhost:8000。' }],
+      }));
     } finally {
       setIsGenerating(false);
     }

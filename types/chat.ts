@@ -1,7 +1,24 @@
+export interface TextBlock {
+  type: 'text';
+  text: string;
+}
+
+export interface WidgetBlock {
+  type: 'widget';
+  tool_call_id: string;
+  title: string;
+  widget_code: string;
+  width?: number;
+  height?: number;
+  status: 'streaming' | 'completed';
+}
+
+export type MessageBlock = TextBlock | WidgetBlock;
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   created_at: string;
-  // 后续开发新的 AI 回复功能时，可以在这里扩展更多字段（如 tool_calls, thinking 等）
+  blocks?: MessageBlock[];
 }
