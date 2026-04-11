@@ -54,7 +54,7 @@ export default function ChatSandboxPage() {
     buffer: string,
     onEvent: (eventName: string, data: Record<string, unknown>) => void
   ): string => {
-    let rest = buffer;
+    let rest = buffer.replace(/\r\n/g, '\n');
     let splitIndex = rest.indexOf('\n\n');
     while (splitIndex !== -1) {
       const rawEvent = rest.slice(0, splitIndex);

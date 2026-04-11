@@ -22,6 +22,7 @@ echo "Starting deployment..."
 # --- 3. 执行前端推送 ---
 # 假设脚本在前端目录下运行
 echo "Pushing Frontend..."
+git rm -r --cached .
 git add .
 # 即使没有文件更改也允许脚本继续
 git commit -m "$FE_COMMIT_MSG" || echo "No changes to commit in Frontend"
@@ -31,6 +32,7 @@ git push origin master
 echo "Switching to Backend..."
 if [ -d "../backend" ]; then
     cd ../backend
+    git rm -r --cached .
     git add .
     git commit -m "$BE_COMMIT_MSG" || echo "No changes to commit in Backend"
     git push origin main
