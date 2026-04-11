@@ -296,12 +296,41 @@ export default function ChatSandboxPage() {
       if (!Array.isArray(payload.messages)) return;
       const loadedMessages: Message[] = payload.messages
         .filter((item: unknown): item is Record<string, unknown> => typeof item === 'object' && item !== null)
-        .map((item: Record<string, unknown>) => ({
-          id: String(item.id ?? Date.now()),
-          role: (item.role === 'assistant' || item.role === 'system') ? item.role : 'user',
-          content: String(item.content ?? ''),
-          created_at: String(item.created_at ?? new Date().toISOString()),
-        }));
+        .map((item: Record<string, unknown>) => {
+          const role = (item.role === 'assistant' || item.role === 'system') ? item.role : 'user' as const;
+          const content = String(item.content ?? '');
+          let blocks: MessageBlock[] | undefined;
+          if (Array.isArray(item.blocks) && item.blocks.length > 0) {
+            blocks = (item.blocks as Record<string, unknown>[])
+              .map((b): MessageBlock | null => {
+                if (b.type === 'widget' && typeof b.widget_code === 'string') {
+                  return {
+                    type: 'widget',
+                    tool_call_id: String(b.tool_call_id ?? ''),
+                    title: String(b.title ?? ''),
+                    widget_code: b.widget_code,
+                    width: typeof b.width === 'number' ? b.width : undefined,
+                    height: typeof b.height === 'number' ? b.height : undefined,
+                    status: 'completed',
+                  };
+                }
+                if (b.type === 'text' && typeof b.text === 'string') {
+                  return { type: 'text', text: b.text };
+                }
+                return null;
+              })
+              .filter((b): b is MessageBlock => b !== null);
+          } else if (role === 'assistant' && content) {
+            blocks = [{ type: 'text', text: content }];
+          }
+          return {
+            id: String(item.id ?? Date.now()),
+            role,
+            content,
+            created_at: String(item.created_at ?? new Date().toISOString()),
+            blocks,
+          };
+        });
       setMessages(loadedMessages);
       setSessionId(targetSessionId);
     } catch {
