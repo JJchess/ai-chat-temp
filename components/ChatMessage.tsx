@@ -26,6 +26,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
         <WidgetFrame
           widgetCode={block.widget_code}
           status={block.status}
+          loadingMessages={block.loading_messages}
           height={block.height}
         />
       </div>

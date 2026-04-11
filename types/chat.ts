@@ -8,6 +8,7 @@ export interface WidgetBlock {
   tool_call_id: string;
   title: string;
   widget_code: string;
+  loading_messages?: string[];
   width?: number;
   height?: number;
   status: 'streaming' | 'completed';

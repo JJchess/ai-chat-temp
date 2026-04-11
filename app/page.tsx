@@ -198,11 +198,16 @@ export default function ChatSandboxPage() {
             typeof data.tool_call_id === 'string' &&
             typeof data.title === 'string'
           ) {
+            const loadingMessages =
+              Array.isArray(data.loading_messages)
+                ? data.loading_messages.filter((item): item is string => typeof item === 'string')
+                : undefined;
             const widgetBlock: WidgetBlock = {
               type: 'widget',
               tool_call_id: data.tool_call_id,
               title: data.title,
               widget_code: '',
+              loading_messages: loadingMessages,
               width: typeof data.width === 'number' ? data.width : undefined,
               height: typeof data.height === 'number' ? data.height : undefined,
               status: 'streaming',
