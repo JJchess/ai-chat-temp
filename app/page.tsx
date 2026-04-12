@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Message, MessageBlock, WidgetBlock } from '../types/chat';
 import { ChatMessage } from '../components/ChatMessage';
 import { ChatComposer } from '../components/ChatComposer';
+import { downloadJsonFile } from '../lib/exportDownload';
 
 const BACKEND_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:8000';
 
@@ -262,11 +263,12 @@ export default function ChatSandboxPage() {
               setSessions(prev => {
                 const now = new Date().toISOString();
                 const previewText = messages[messages.length - 1]?.content ?? text;
+                const prevEntry = prev.find(item => item.session_id === activeSessionId);
                 const next = prev.filter(item => item.session_id !== activeSessionId);
                 return [
                   {
                     session_id: activeSessionId,
-                    message_count: (next.find(item => item.session_id === activeSessionId)?.message_count ?? 0) + 2,
+                    message_count: (prevEntry?.message_count ?? 0) + 2,
                     updated_at: now,
                     preview: previewText.slice(0, 80),
                   },
@@ -343,6 +345,17 @@ export default function ChatSandboxPage() {
     setIsGenerating(false);
   };
 
+  const handleExportSession = async () => {
+    if (!sessionId) return;
+    try {
+      const response = await fetch(`${BACKEND_BASE_URL}/chat/sessions/${sessionId}`);
+      if (!response.ok) return;
+      const payload: unknown = await response.json();
+      downloadJsonFile(`session-${sessionId.slice(0, 8)}.json`, payload);
+    } catch {
+    }
+  };
+
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-950 font-sans overflow-hidden">
       {/* 左侧导航侧边栏 (Mock) */}
@@ -391,6 +404,16 @@ export default function ChatSandboxPage() {
         <header className="h-14 shrink-0 flex items-center justify-between border-b border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm px-4">
           <h1 className="text-sm font-semibold text-gray-800 dark:text-gray-200">AI Reply Sandbox</h1>
           <div className="flex items-center gap-2">
+            {sessionId ? (
+              <button
+                type="button"
+                onClick={() => { void handleExportSession(); }}
+                className="text-xs font-medium px-2 py-1 rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                title="导出当前会话 JSON（含消息与 widget 代码）"
+              >
+                导出会话
+              </button>
+            ) : null}
             <button className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors" title="右侧面板">
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><line x1="15" x2="15" y1="3" y2="21"/></svg>
             </button>

@@ -1,4 +1,5 @@
 import { Message, MessageBlock } from '../types/chat';
+import { downloadWidgetAsHtml } from '../lib/exportDownload';
 import { WidgetFrame } from './WidgetFrame';
 
 interface ChatMessageProps {
@@ -20,8 +21,19 @@ export function ChatMessage({ message }: ChatMessageProps) {
 
     return (
       <div key={`${message.id}-widget-${block.tool_call_id}`} className="mt-3">
-        <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-          {block.title.replaceAll('_', ' ')}
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <div className="text-xs text-gray-500 dark:text-gray-400">
+            {block.title.replaceAll('_', ' ')}
+          </div>
+          {block.status === 'completed' && block.widget_code.trim() !== '' ? (
+            <button
+              type="button"
+              onClick={() => downloadWidgetAsHtml(block.title, block.widget_code, block.height)}
+              className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              下载 HTML
+            </button>
+          ) : null}
         </div>
         <WidgetFrame
           widgetCode={block.widget_code}
